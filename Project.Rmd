@@ -1,0 +1,147 @@
+---
+title: "Project"
+output: html_document
+---
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+
+Data 
+
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+```{r}
+training <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing  <- read.csv("pml-testing.csv",  na.strings = c("NA", "#DIV/0!", ""))
+```
+
+
+Remove irrelevant data
+```{r}
+
+training<- training[ , colSums(is.na(training)) == 0]
+remove = c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window')
+training<- training[, -which(names(training) %in% remove)]
+
+```
+```{r}
+library(caret)
+
+zeroVar= nearZeroVar(training[sapply(training, is.numeric)], saveMetrics = TRUE)
+trainingNonZero= training[,zeroVar[, 'nzv']==0]
+corr <- cor(na.omit(trainingNonZero[sapply(trainingNonZero, is.numeric)]))
+dim(corr)
+
+```
+
+Remove correlations above 85 percent. 
+
+```{r}
+
+corrMatrix <- cor(na.omit(trainingNonZero[sapply(trainingNonZero, is.numeric)]))
+corr <- expand.grid(row = 1:52, col = 1:52)
+corr$correlation <- as.vector(corrMatrix)
+
+removecor = findCorrelation(corrMatrix, cutoff = .85, verbose = TRUE)
+trainingWithoutCorrelated = trainingNonZero[,-removecor]
+
+dim (trainingWithoutCorrelated)
+```
+
+# Finalize Data Set
+
+```{r}
+inTrain <- createDataPartition(y=trainingWithoutCorrelated$classe, p=0.7, list=FALSE)
+training <- trainingWithoutCorrelated[inTrain,]; testing <- trainingWithoutCorrelated[-inTrain,]
+dim(training)
+dim(testing)
+```
+
+# Try Regression Tree 
+
+```{r}
+
+library(tree)
+set.seed(345)
+treetraining=tree(classe~.,data=training)
+summary(treetraining)
+
+plot(treetraining)
+text(treetraining,pretty=0, cex =.8)
+
+
+predictedtree=predict(treetraining,testing,type="class")
+predictedMatrix = with(testing,table(predictedtree,classe))
+sum(diag(predictedMatrix))/sum(as.vector(predictedMatrix)) # error rate
+```
+
+Not the best result.Let's try to prune the tree.
+
+
+```{r}
+cv.training=cv.tree(treetraining,FUN=prune.misclass)
+cv.training
+
+prunedtraining=prune.misclass(treetraining,best=18)
+
+predictedtree=predict(prunedtraining,testing,type="class")
+predMatrix = with(testing,table(predictedtree,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix)) # error rate
+```
+
+
+## Random Forests
+
+```{r}
+require(randomForest)
+
+set.seed(345)
+
+rf=randomForest(classe~.,data=training,ntree=100, importance=TRUE)
+rf
+
+varImpPlot(rf,)
+
+predictedTree=predict(rf,testing,type="class")
+predMatrix = with(testing,table(predictedTree,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix)) # error rate
+```
+
+
+Looks like the best. 
+
+Let's test
+
+## Testing
+
+```{r}
+set.seed(3141592)
+
+
+fitModel <- train(classe~.,
+                  data=training,
+                  method="rf",
+                  trControl=trainControl(method="cv",number=2),
+                  prox=TRUE,
+                  verbose=TRUE,
+                  allowParallel=TRUE)
+
+predictions <- predict(fitModel, newdata=testing)
+
+testing$classe <- predictions
+
+
+```
+
