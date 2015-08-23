@@ -127,20 +127,10 @@ Let's test
 ## Testing
 
 ```{r}
-set.seed(3141592)
+testing= read.csv("pml-testing.csv", na.strings=c("", "NA", "NULL"))
+answers <- predict(rf, testing)
+answers
 
-
-fitModel <- train(classe~.,
-                  data=training,
-                  method="rf",
-                  trControl=trainControl(method="cv",number=2),
-                  prox=TRUE,
-                  verbose=TRUE,
-                  allowParallel=TRUE)
-
-predictions <- predict(fitModel, newdata=testing)
-
-testing$classe <- predictions
 
 
 ```
